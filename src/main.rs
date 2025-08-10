@@ -1,6 +1,8 @@
 use std::collections::{BTreeSet, HashMap};
 use burn::backend::wgpu::WgpuDevice;
 use burn::backend::Wgpu;
+use burn::nn::loss::CrossEntropyLoss;
+use burn::nn::{Embedding, EmbeddingConfig};
 use burn::prelude::Backend;
 use burn::tensor::{Int, Tensor, TensorData};
 
@@ -105,6 +107,32 @@ impl Batcher {
     }
 }
 
+pub struct BigramModel<B:Backend> {
+    token_embedding_table:Embedding<B>,
+}
+
+impl <B: Backend> BigramModel<B> {
+    pub fn new(vocab_size:usize, device:&B::Device) -> Self {
+        let token_embedding_table = EmbeddingConfig::new(vocab_size, vocab_size).init(device);
+
+        Self { token_embedding_table }
+    }
+
+    pub fn forward(&self, idx:Tensor<B, 2, Int>) -> Tensor<B, 3> {
+        self.token_embedding_table.forward(idx)
+    }
+
+    pub fn loss(&self, idx: Tensor<B, 2, Int>, targets:Tensor<B, 2, Int>,  device:&B::Device) -> Tensor<B, 1> {
+        let logits = self.forward(idx);
+
+        let [b, t, c] = logits.dims();
+        let logits = logits.reshape([b * t, c]);
+        let targets = targets.reshape([b * t]);
+
+        CrossEntropyLoss::new(None, device).forward(logits, targets)
+    }
+}
+
 fn main() {
     type MyBackend = Wgpu;
     let device = WgpuDevice::default();
@@ -121,9 +149,14 @@ fn main() {
 
     println!("{x}");
     println!("{y}");
-    
+
     // x = [[0, 1, 2, 3, 4, 5, 6, 7],[],[],[]]
     // y = [[1, 2, 3, 4, 5, 6, 7, 8],[],[],[]]
 
+    let model = BigramModel::<MyBackend>::new(tokenizer.vocab_size(), &device);
+    let logits = model.forward(x.clone());
+    println!("{logits}");
 
+    let loss = model.loss(x, y, &device);
+    println!("{loss}")
 }
