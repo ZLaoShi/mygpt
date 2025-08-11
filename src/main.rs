@@ -1,10 +1,14 @@
 use std::collections::{BTreeSet, HashMap};
 use burn::backend::wgpu::WgpuDevice;
-use burn::backend::Wgpu;
+use burn::backend::{Autodiff, Wgpu};
+use burn::module::{AutodiffModule, Module};
 use burn::nn::loss::CrossEntropyLoss;
 use burn::nn::{Embedding, EmbeddingConfig};
+use burn::optim::{AdamWConfig, GradientsParams, Optimizer};
 use burn::prelude::Backend;
 use burn::tensor::activation::softmax;
+use burn::tensor::backend::AutodiffBackend;
+use burn::tensor::cast::ToElement;
 use burn::tensor::{Int, Tensor, TensorData};
 use rand::prelude::*;
 
@@ -109,6 +113,7 @@ impl Batcher {
     }
 }
 
+#[derive(Debug, Module)]
 pub struct BigramModel<B:Backend> {
     token_embedding_table:Embedding<B>,
 }
@@ -158,8 +163,31 @@ pub fn genrate<B: Backend>(model:&BigramModel<B>, prompt:Vec<i32>, max_new_token
     tokens
 }
 
+pub fn train<B:AutodiffBackend>(vocab_size: usize, batcher: &Batcher, device:&B::Device) -> BigramModel<B> {
+    let mut model = BigramModel::<B>::new(vocab_size, device);
+    let mut optimizer = AdamWConfig::new().init::<B, BigramModel<B>>();
+
+    for i in 0..10000 {
+        let (x, y) = batcher.batch::<B>(BatchType::Train, device);
+
+        let loss = model.loss(x, y, device);
+        
+        if i % 1000 == 0 {
+            let last_loss = loss.clone().into_scalar().to_f32();
+            println!("loss: {last_loss}");
+        }
+        let grads = loss.backward();
+        let grads = GradientsParams::from_grads(grads, &model);
+
+        model = optimizer.step(1e-3, model, grads);
+    }
+
+    model
+}
 fn main() {
     type MyBackend = Wgpu;
+    type MyAutodiffBackend = Autodiff<MyBackend>;
+
     let device = WgpuDevice::default();
 
     let text = include_str!("input.txt");
@@ -175,9 +203,6 @@ fn main() {
     println!("{x}");
     println!("{y}");
 
-    // x = [[0, 1, 2, 3, 4, 5, 6, 7],[],[],[]]
-    // y = [[1, 2, 3, 4, 5, 6, 7, 8],[],[],[]]
-
     let model = BigramModel::<MyBackend>::new(tokenizer.vocab_size(), &device);
     let logits = model.forward(x.clone());
     println!("{logits}");
@@ -186,5 +211,15 @@ fn main() {
     println!("{loss}");
 
     let new_tokens = genrate(&model, tokenizer.encode("A"), 100, &device);
+    println!("{}", tokenizer.decode(&new_tokens));
+
+    let trained_model = train::<MyAutodiffBackend>
+    (
+        tokenizer.vocab_size(), 
+        &batcher, 
+        &device
+    );
+
+    let new_tokens = genrate(&trained_model, tokenizer.encode("A"), 100, &device);
     println!("{}", tokenizer.decode(&new_tokens));
 }
