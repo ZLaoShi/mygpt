@@ -1,7 +1,6 @@
 use burn::backend::wgpu::WgpuDevice;
 use burn::backend::{Autodiff, Wgpu};
 
-use crate::batching::{BatchType, Batcher};
 use crate::genrating::genrate;
 use crate::modeling::BigramModel;
 use crate::tokenizing::Tokenizer;

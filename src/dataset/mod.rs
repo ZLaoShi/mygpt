@@ -2,8 +2,8 @@ use burn::{data::dataset::Dataset};
 
 #[derive(Debug, Clone)]
 pub struct TokenPair {
-    input: Vec<i32>,
-    target: Vec<i32>,
+    pub input: Vec<i32>,
+    pub target: Vec<i32>,
 }
 
 #[derive(Debug)]
