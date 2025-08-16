@@ -1,10 +1,10 @@
 use burn::backend::wgpu::WgpuDevice;
 use burn::backend::{Autodiff, Wgpu};
+use burn::optim::AdamConfig;
 
-use crate::genrating::genrate;
-use crate::modeling::BigramModel;
+use crate::modeling:: BigramModelConfig;
 use crate::tokenizing::Tokenizer;
-use crate::training::train;
+use crate::training::{train, TrainingConfig};
 
 pub mod dataset;
 pub mod tokenizing;
@@ -13,12 +13,12 @@ pub mod modeling;
 pub mod training;
 pub mod genrating;
 
-
 fn main() {
     type MyBackend = Wgpu;
     type MyAutodiffBackend = Autodiff<MyBackend>;
 
     let device = WgpuDevice::default();
+    let artifact_dir = "artifact";
 
     let text: &'static str = include_str!("input.txt");
     println!("text chars len: {}", text.chars().count());
@@ -27,29 +27,16 @@ fn main() {
     println!("vocab size: {}", tokenizer.vocab_size());
     println!("{}", tokenizer.decode(&tokenizer.encode("Hello world!")));
 
-    let batcher = Batcher::from_tokens(tokenizer.encode(text));
-    let (x,y) = batcher.batch::<MyBackend>(BatchType::Train, &device);
-
-    println!("{x}");
-    println!("{y}");
-
-    let model = BigramModel::<MyBackend>::new(tokenizer.vocab_size(), &device);
-    let logits = model.forward(x.clone());
-    println!("{logits}");
-
-    let loss = model.loss(x, y, &device);
-    println!("{loss}");
-
-    let new_tokens = genrate(&model, tokenizer.encode("A"), 100, &device);
-    println!("{}", tokenizer.decode(&new_tokens));
-
-    let trained_model = train::<MyAutodiffBackend>
+   train::<MyAutodiffBackend>
     (
-        tokenizer.vocab_size(), 
-        &batcher, 
-        &device
+      artifact_dir,
+      tokenizer.encode(&text[0..10000]),
+        TrainingConfig::new(
+            BigramModelConfig::new(tokenizer.vocab_size(), 
+            AdamConfig::new)),
+            device
     );
 
-    let new_tokens = genrate(&trained_model, tokenizer.encode("A"), 100, &device);
-    println!("{}", tokenizer.decode(&new_tokens));
+    // let new_tokens = genrate(&trained_model, tokenizer.encode("A"), 100, &device);
+    // println!("{}", tokenizer.decode(&new_tokens));
 }

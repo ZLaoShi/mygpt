@@ -1,5 +1,19 @@
 use burn::{module::Module, nn::{loss::CrossEntropyLoss, Embedding, EmbeddingConfig}, prelude::Backend, tensor::{Int, Tensor}};
+use burn::prelude::Config;
 
+#[derive(Debug, Config)]
+pub struct  BigramModelConfig {
+    vocab_size: usize,
+    pub(crate) block_size: usize,
+}
+
+impl BigramModelConfig {
+    pub fn init<B: Backend>(&self, device: &B::Device) -> BigramModel<B> {
+        let token_embedding_table = EmbeddingConfig::new(self.vocab_size, self.vocab_size).init(device);
+
+        BigramModel { token_embedding_table } 
+    }
+}
 #[derive(Debug, Module)]
 pub struct BigramModel<B:Backend> {
     token_embedding_table:Embedding<B>,

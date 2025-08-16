@@ -1,26 +1,85 @@
-use burn::{optim::{AdamWConfig, GradientsParams, Optimizer}, tensor::{backend::AutodiffBackend, cast::ToElement}};
+use burn::{
+    config::Config,
+    data::dataloader::DataLoaderBuilder,
+    module::Module,
+    optim::AdamConfig,
+    record::CompactRecorder,
+    tensor::backend::AutodiffBackend,
+    train::{
+        LearnerBuilder,
+        metric::{AccuracyMetric, LossMetric},
+    },
+};
 
-use crate::{batching::{BatchType, Batcher}, modeling::BigramModel};
+use crate::{batching::TokenPairBatcher, dataset::TokenPairDataset, modeling::BigramModelConfig};
 
+#[derive(Config)]
+pub struct TrainingConfig {
+    pub model: BigramModelConfig,
+    pub optimizer: AdamConfig,
+    pub num_epochs: usize,
+    pub batch_size: usize,
+    pub num_workers: usize,
+    #[config(default = 42)]
+    pub seed: u64,
+    pub learning_rate: f64,
+}
 
-pub fn train<B:AutodiffBackend>(vocab_size: usize, batcher: &Batcher, device:&B::Device) -> BigramModel<B> {
-    let mut model = BigramModel::<B>::new(vocab_size, device);
-    let mut optimizer = AdamWConfig::new().init::<B, BigramModel<B>>();
+fn create_artifact_dir(artifact_dir: &str) {
+    // Remove existing artifacts before to get an accurate learner summary
+    std::fs::remove_dir_all(artifact_dir).ok();
+    std::fs::create_dir_all(artifact_dir).ok();
+}
 
-    for i in 0..100000 {
-        let (x, y) = batcher.batch::<B>(BatchType::Train, device);
+pub fn train<B: AutodiffBackend>(
+    artifact_dir: &str,
+    tokens: Vec<i32>,
+    config: TrainingConfig,
+    device: B::Device,
+) {
+    create_artifact_dir(artifact_dir);
+    config
+        .save(format!("{artifact_dir}/config.json"))
+        .expect("Config should be saved successfully");
 
-        let loss = model.loss(x, y, device);
-        
-        if i % 1000 == 0 {
-            let last_loss = loss.clone().into_scalar().to_f32();
-            println!("loss: {last_loss}");
-        }
-        let grads = loss.backward();
-        let grads = GradientsParams::from_grads(grads, &model);
+    B::seed(config.seed);
 
-        model = optimizer.step(1e-3, model, grads);
-    }
+    let batcher = TokenPairBatcher::default();
+    let (dataset_train, dataset_test) = TokenPairDataset::from_tokens(
+        tokens, //
+        config.model.block_size,
+    );
 
-    model
+    let dataloader_train = DataLoaderBuilder::new(batcher.clone())
+        .batch_size(config.batch_size)
+        .shuffle(config.seed)
+        .num_workers(config.num_workers)
+        .build(dataset_train);
+
+    let dataloader_test = DataLoaderBuilder::new(batcher)
+        .batch_size(config.batch_size)
+        .shuffle(config.seed)
+        .num_workers(config.num_workers)
+        .build(dataset_test);
+
+    let learner = LearnerBuilder::new(artifact_dir)
+        .metric_train_numeric(AccuracyMetric::new())
+        .metric_valid_numeric(AccuracyMetric::new())
+        .metric_train_numeric(LossMetric::new())
+        .metric_valid_numeric(LossMetric::new())
+        .with_file_checkpointer(CompactRecorder::new())
+        .devices(vec![device.clone()])
+        .num_epochs(config.num_epochs)
+        .summary()
+        .build(
+            config.model.init::<B>(&device),
+            config.optimizer.init(),
+            config.learning_rate,
+        );
+
+    let model_trained = learner.fit(dataloader_train, dataloader_test);
+
+    model_trained
+        .save_file(format!("{artifact_dir}/model"), &CompactRecorder::new())
+        .expect("Trained model should be saved successfully");
 }

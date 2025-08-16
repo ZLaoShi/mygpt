@@ -5,4 +5,4 @@ edition = "2024"
 
 [dependencies]
 rand = "0.9.0"
-burn = {version = "0.17", features = ["wgpu", "train"]} 
+burn = {version = "0.17", features = ["wgpu", "train", "vision"]} 
