@@ -7,6 +7,7 @@ use crate::modeling::BigramModel;
 use crate::tokenizing::Tokenizer;
 use crate::training::train;
 
+pub mod dataset;
 pub mod tokenizing;
 pub mod batching;
 pub mod modeling;
