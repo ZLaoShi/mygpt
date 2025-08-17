@@ -32,8 +32,13 @@ fn main() {
       artifact_dir,
       tokenizer.encode(&text[0..10000]),
         TrainingConfig::new(
-            BigramModelConfig::new(tokenizer.vocab_size(), 
-            AdamConfig::new)),
+            BigramModelConfig::new(tokenizer.vocab_size(),128),
+            AdamConfig::new(),
+          10,
+        64,
+      9,
+    1.0e-3,
+  ),
             device
     );
 

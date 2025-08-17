@@ -8,8 +8,8 @@ use crate::dataset::TokenPair;
 
 #[derive(Debug, Clone)]
 pub struct TokenPairBatch<B: Backend> {
-    inputs: Tensor<B, 2, Int>,
-    targets: Tensor<B, 2, Int>,
+    pub inputs: Tensor<B, 2, Int>,
+    pub targets: Tensor<B, 2, Int>,
 }
 
 #[derive(Debug, Default, Clone)]
